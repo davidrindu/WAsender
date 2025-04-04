@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import TopNavigation from "../dashboard/layout/TopNavigation";
-import Sidebar from "../dashboard/layout/Sidebar";
+import TopNavigation from "../../dashboard/layout/TopNavigation";
+import Sidebar from "../../dashboard/layout/Sidebar";
 import { Button } from "@/components/ui/button";
-import NewProjectDialog from "../projects/NewProjectDialog";
-import ProjectCard from "../projects/ProjectCard";
-import { supabase } from "../../../supabase/supabase";
+import NewProjectDialog from "../../projects/NewProjectDialog";
+import ProjectCard from "../../projects/ProjectCard";
+import { supabase } from "../../../../supabase/supabase";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 

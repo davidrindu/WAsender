@@ -50,12 +50,20 @@ const NewProjectDialog = ({
 
     setLoading(true);
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("You must be logged in to create a project");
+      }
+
       const { error } = await supabase.from("projects").insert({
         title,
         description,
         status,
         message_count: 0,
         scheduled_count: 0,
+        user_id: user.id,
       });
 
       if (error) throw error;

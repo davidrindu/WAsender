@@ -25,6 +25,23 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Lazy loaded components
+const ProjectsPage = React.lazy(() => import("./components/pages/projects"));
+const ProjectDetailPage = React.lazy(
+  () => import("./components/pages/project"),
+);
+const CreateMessagePage = React.lazy(
+  () => import("./components/pages/project/CreateMessagePage"),
+);
+const ScheduleMessagePage = React.lazy(
+  () => import("./components/pages/project/ScheduleMessagePage"),
+);
+const CalendarPage = React.lazy(() => import("./components/pages/calendar"));
+const TeamPage = React.lazy(() => import("./components/pages/team"));
+const SettingsPage = React.lazy(() => import("./components/pages/settings"));
+const HelpPage = React.lazy(() => import("./components/pages/help"));
+const ProfilePage = React.lazy(() => import("./components/pages/profile"));
+
 function AppRoutes() {
   return (
     <>
@@ -45,11 +62,19 @@ function AppRoutes() {
           path="/projects"
           element={
             <PrivateRoute>
-              <React.Suspense
-                fallback={<LoadingScreen text="Loading projects..." />}
-              >
-                {React.lazy(() => import("./components/pages/projects"))}
-              </React.Suspense>
+              <Suspense fallback={<LoadingScreen text="Loading projects..." />}>
+                <ProjectsPage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/project/:id"
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingScreen text="Loading project..." />}>
+                <ProjectDetailPage />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -57,11 +82,9 @@ function AppRoutes() {
           path="/calendar"
           element={
             <PrivateRoute>
-              <React.Suspense
-                fallback={<LoadingScreen text="Loading calendar..." />}
-              >
-                {React.lazy(() => import("./components/pages/calendar"))}
-              </React.Suspense>
+              <Suspense fallback={<LoadingScreen text="Loading calendar..." />}>
+                <CalendarPage />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -69,11 +92,9 @@ function AppRoutes() {
           path="/team"
           element={
             <PrivateRoute>
-              <React.Suspense
-                fallback={<LoadingScreen text="Loading team..." />}
-              >
-                {React.lazy(() => import("./components/pages/team"))}
-              </React.Suspense>
+              <Suspense fallback={<LoadingScreen text="Loading team..." />}>
+                <TeamPage />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -81,11 +102,9 @@ function AppRoutes() {
           path="/settings"
           element={
             <PrivateRoute>
-              <React.Suspense
-                fallback={<LoadingScreen text="Loading settings..." />}
-              >
-                {React.lazy(() => import("./components/pages/settings"))}
-              </React.Suspense>
+              <Suspense fallback={<LoadingScreen text="Loading settings..." />}>
+                <SettingsPage />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -93,11 +112,43 @@ function AppRoutes() {
           path="/help"
           element={
             <PrivateRoute>
-              <React.Suspense
-                fallback={<LoadingScreen text="Loading help..." />}
+              <Suspense fallback={<LoadingScreen text="Loading help..." />}>
+                <HelpPage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingScreen text="Loading profile..." />}>
+                <ProfilePage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/project/:id/create-message"
+          element={
+            <PrivateRoute>
+              <Suspense
+                fallback={<LoadingScreen text="Loading message creator..." />}
               >
-                {React.lazy(() => import("./components/pages/help"))}
-              </React.Suspense>
+                <CreateMessagePage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/project/:id/schedule-message"
+          element={
+            <PrivateRoute>
+              <Suspense
+                fallback={<LoadingScreen text="Loading message scheduler..." />}
+              >
+                <ScheduleMessagePage />
+              </Suspense>
             </PrivateRoute>
           }
         />

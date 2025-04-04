@@ -16,7 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "../../../supabase/auth";
-import { QrCode, Bell, Shield, Smartphone, Clock, Save } from "lucide-react";
+import { Bell, Shield, Clock, Save } from "lucide-react";
+import WhatsAppConnection from "../settings/WhatsAppConnection";
 
 const SettingsPage = () => {
   const { user } = useAuth();
@@ -36,16 +37,7 @@ const SettingsPage = () => {
   const [messageFailure, setMessageFailure] = useState(true);
   const [weeklyReport, setWeeklyReport] = useState(false);
 
-  // WhatsApp connection
-  const handleConnectWhatsApp = () => {
-    // In a real app, this would initiate the WhatsApp connection process
-    setIsWhatsAppConnected(true);
-  };
-
-  const handleDisconnectWhatsApp = () => {
-    // In a real app, this would disconnect WhatsApp
-    setIsWhatsAppConnected(false);
-  };
+  // WhatsApp connection status is now managed by the WhatsAppConnection component
 
   return (
     <div className="min-h-screen bg-[#f5f5f7]">
@@ -163,76 +155,9 @@ const SettingsPage = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {isWhatsAppConnected ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center p-4 bg-green-50 rounded-lg border border-green-100">
-                        <Smartphone className="h-6 w-6 text-green-600 mr-3" />
-                        <div>
-                          <h3 className="font-medium text-green-800">
-                            WhatsApp Connected
-                          </h3>
-                          <p className="text-sm text-green-700">
-                            Your WhatsApp account is connected and ready to use
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Connected Number</Label>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                          <span>+1 (555) 123-4567</span>
-                          <Badge className="bg-green-100 text-green-800">
-                            Active
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Session Information</Label>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 bg-gray-50 rounded-md">
-                            <p className="text-sm text-gray-500">
-                              Connected Since
-                            </p>
-                            <p className="font-medium">May 15, 2023</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-md">
-                            <p className="text-sm text-gray-500">
-                              Last Activity
-                            </p>
-                            <p className="font-medium">Today, 2:30 PM</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end">
-                        <Button
-                          variant="outline"
-                          className="text-red-600"
-                          onClick={handleDisconnectWhatsApp}
-                        >
-                          Disconnect WhatsApp
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <QrCode className="h-32 w-32 text-gray-300 mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">
-                        Connect WhatsApp
-                      </h3>
-                      <p className="text-sm text-gray-500 mb-6 max-w-md">
-                        To use the WhatsApp Scheduler, you need to connect your
-                        WhatsApp account by scanning a QR code with your phone.
-                      </p>
-                      <Button
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={handleConnectWhatsApp}
-                      >
-                        Connect WhatsApp
-                      </Button>
-                    </div>
-                  )}
+                  <WhatsAppConnection
+                    onConnectionStatusChange={setIsWhatsAppConnected}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>

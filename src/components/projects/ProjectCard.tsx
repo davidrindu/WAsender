@@ -39,6 +39,7 @@ interface Project {
   scheduled_count: number;
   created_at: string;
   updated_at: string;
+  user_id: string;
 }
 
 interface ProjectCardProps {
@@ -188,7 +189,11 @@ const ProjectCard = ({ project, onProjectUpdated }: ProjectCardProps) => {
           </div>
         </CardContent>
         <CardFooter className="pt-0">
-          <Button variant="outline" className="w-full">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => (window.location.href = `/project/${project.id}`)}
+          >
             View Project
           </Button>
         </CardFooter>
