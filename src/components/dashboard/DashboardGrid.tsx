@@ -6,6 +6,7 @@ import { CalendarDays, BarChart2, Users, Clock, User } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { supabase } from "../../../supabase/supabase";
 import { Button } from "@/components/ui/button";
+import { fetchTeamMembers, fetchProjectsWithTeam, Project } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -302,6 +303,7 @@ const DashboardGrid = ({
   const [projects, setProjects] = useState(initialProjects);
   const [totalProjects, setTotalProjects] = useState(0);
   const [teamMembers, setTeamMembers] = useState<TeamMemberWithProjects[]>([]);
+  const [activeTeamMembersCount, setActiveTeamMembersCount] = useState(0);
   const [upcomingDeadlines, setUpcomingDeadlines] = useState(0);
   const [selectedMember, setSelectedMember] =
     useState<TeamMemberWithProjects | null>(null);
@@ -313,12 +315,11 @@ const DashboardGrid = ({
       try {
         setLoading(true);
 
-        // Fetch projects
-        const { data: projectsData, error: projectsError } = await supabase
-          .from("projects")
-          .select("*");
+        // Fetch projects with team members using our new API function
+        const projectsWithTeam = await fetchProjectsWithTeam();
 
-        if (projectsError) throw projectsError;
+        // Fetch team members from the same source as the team page
+        const apiTeamMembers = await fetchTeamMembers();
 
         // Calculate upcoming deadlines (projects due within 7 days)
         const today = new Date();
@@ -326,44 +327,33 @@ const DashboardGrid = ({
         nextWeek.setDate(today.getDate() + 7);
 
         // Transform project data to match our ProjectCardProps format
-        const formattedProjects =
-          projectsData?.map((project) => {
-            // Calculate a random progress value between 0-100 for demo purposes
-            // In a real app, you would have a progress field in your database
-            const progress = Math.floor(Math.random() * 100);
+        const formattedProjects = projectsWithTeam.map((project) => {
+          // Calculate a progress value based on message_count and scheduled_count
+          // In a real app, you would have a progress field in your database
+          const totalMessages = project.message_count + project.scheduled_count;
+          const progress =
+            totalMessages > 0
+              ? Math.floor((project.message_count / totalMessages) * 100)
+              : Math.floor(Math.random() * 100); // Fallback for projects with no messages
 
-            // Generate random team members for demo purposes
-            // In a real app, you would fetch the actual team members assigned to each project
-            const teamSize = Math.floor(Math.random() * 3) + 1;
-            const teamMembers = [];
-            const names = [
-              "Alice",
-              "Bob",
-              "Charlie",
-              "David",
-              "Eve",
-              "Frank",
-              "Grace",
-              "Henry",
-            ];
+          // Format team members for display
+          const teamMembers =
+            project.team?.map((member) => ({
+              id: member.id,
+              name: member.name,
+              avatar: member.avatar,
+            })) || [];
 
-            for (let i = 0; i < teamSize; i++) {
-              const name = names[Math.floor(Math.random() * names.length)];
-              teamMembers.push({
-                id: `team-${i}`,
-                name,
-                avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
-              });
-            }
-
-            return {
-              id: project.id,
-              title: project.title,
-              progress,
-              team: teamMembers,
-              dueDate: project.due_date || "2024-05-30", // Use a default date if none exists
-            };
-          }) || [];
+          return {
+            id: project.id,
+            title: project.title,
+            progress,
+            team: teamMembers,
+            dueDate: project.updated_at
+              ? new Date(project.updated_at).toISOString().split("T")[0]
+              : "2024-05-30",
+          };
+        });
 
         // Count upcoming deadlines (projects due within 7 days)
         const upcomingDeadlinesCount = formattedProjects.filter((project) => {
@@ -371,76 +361,32 @@ const DashboardGrid = ({
           return dueDate >= today && dueDate <= nextWeek;
         }).length;
 
-        // Use the exact same project assignments as defined in the team page
-        // This ensures consistency between dashboard and team page
-        const teamMembersWithProjects = defaultTeamMembers.map((member) => {
-          // Match the project counts from the team page
-          let projectCount = 0;
-          let memberProjectsList = [];
+        // Create a map to count projects per team member
+        const projectCountMap: Record<string, number> = {};
+        const projectsListMap: Record<string, any[]> = {};
 
-          // Find the corresponding member in defaultTeamMembers and use their project count
-          const defaultMember = defaultTeamMembers.find(
-            (m) => m.id === member.id,
-          );
-
-          if (defaultMember) {
-            // For Alex Johnson (id: "1"), ensure exactly 8 projects as specified
-            if (member.id === "1") {
-              projectCount = 8;
-              // Create 8 projects for Alex Johnson
-              memberProjectsList = [
-                ...defaultProjects,
-                {
-                  id: "4",
-                  title: "API Integration",
-                  progress: 65,
-                },
-                {
-                  id: "5",
-                  title: "User Testing",
-                  progress: 40,
-                },
-                {
-                  id: "6",
-                  title: "Documentation",
-                  progress: 85,
-                },
-                {
-                  id: "7",
-                  title: "Security Audit",
-                  progress: 30,
-                },
-                {
-                  id: "8",
-                  title: "Performance Optimization",
-                  progress: 55,
-                },
-              ]
-                .slice(0, 8)
-                .map((project) => ({
-                  id: project.id,
-                  title: project.title,
-                  progress: project.progress,
-                }));
-            } else {
-              // For other members, use the projects from defaultProjects where they are team members
-              const memberProjects = defaultProjects.filter((project) =>
-                project.team.some((teamMember) => teamMember.id === member.id),
-              );
-
-              projectCount = memberProjects.length;
-              memberProjectsList = memberProjects.map((project) => ({
-                id: project.id,
-                title: project.title,
-                progress: project.progress,
-              }));
+        // Count projects for each team member
+        projectsWithTeam.forEach((project) => {
+          project.team?.forEach((member) => {
+            if (!projectCountMap[member.id]) {
+              projectCountMap[member.id] = 0;
+              projectsListMap[member.id] = [];
             }
-          }
+            projectCountMap[member.id]++;
+            projectsListMap[member.id].push({
+              id: project.id,
+              title: project.title,
+              progress: Math.floor(Math.random() * 100), // Placeholder progress
+            });
+          });
+        });
 
+        // Update team members with project counts and lists
+        const teamMembersWithProjects = apiTeamMembers.map((member) => {
           return {
             ...member,
-            projects: projectCount,
-            projectsList: memberProjectsList,
+            projects: projectCountMap[member.id] || 0,
+            projectsList: projectsListMap[member.id] || [],
           };
         });
 
@@ -448,83 +394,46 @@ const DashboardGrid = ({
         setProjects(
           formattedProjects.length > 0 ? formattedProjects : initialProjects,
         );
-        setTotalProjects(projectsData?.length || 0);
+        setTotalProjects(projectsWithTeam.length);
         setTeamMembers(teamMembersWithProjects);
+        setActiveTeamMembersCount(
+          apiTeamMembers.filter((member) => member.status === "active").length,
+        );
         setUpcomingDeadlines(upcomingDeadlinesCount);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
 
-        // Fallback to default data
-        // Ensure consistency with team page even in fallback mode
-        const teamMembersWithProjects = defaultTeamMembers.map((member) => {
-          let projectCount = 0;
-          let memberProjectsList = [];
+        // Try to fetch just the team members even if other data failed
+        try {
+          const apiTeamMembers = await fetchTeamMembers();
 
-          // For Alex Johnson (id: "1"), ensure exactly 8 projects
-          if (member.id === "1") {
-            projectCount = 8;
-            // Create 8 projects for Alex Johnson
-            memberProjectsList = [
-              ...defaultProjects,
-              {
-                id: "4",
-                title: "API Integration",
-                progress: 65,
-              },
-              {
-                id: "5",
-                title: "User Testing",
-                progress: 40,
-              },
-              {
-                id: "6",
-                title: "Documentation",
-                progress: 85,
-              },
-              {
-                id: "7",
-                title: "Security Audit",
-                progress: 30,
-              },
-              {
-                id: "8",
-                title: "Performance Optimization",
-                progress: 55,
-              },
-            ]
-              .slice(0, 8)
-              .map((project) => ({
-                id: project.id,
-                title: project.title,
-                progress: project.progress,
-              }));
-          } else {
-            // For other members, use the projects from defaultProjects
-            const memberProjects = defaultProjects.filter((project) =>
-              project.team.some((teamMember) => teamMember.id === member.id),
-            );
-
-            projectCount = memberProjects.length;
-            memberProjectsList = memberProjects.map((project) => ({
-              id: project.id,
-              title: project.title,
-              progress: project.progress,
-            }));
-          }
-
-          return {
-            ...member,
-            projects: projectCount,
-            projectsList: memberProjectsList,
-          };
-        });
-
-        setProjects(initialProjects);
-        setTotalProjects(initialProjects.length);
-        setTeamMembers(teamMembersWithProjects);
-        setUpcomingDeadlines(5); // Fallback to default
-        setLoading(false);
+          setProjects(initialProjects);
+          setTotalProjects(initialProjects.length);
+          setTeamMembers(
+            apiTeamMembers.map((member) => ({
+              ...member,
+              projects: 0,
+              projectsList: [],
+            })),
+          );
+          setActiveTeamMembersCount(
+            apiTeamMembers.filter((member) => member.status === "active")
+              .length,
+          );
+          setUpcomingDeadlines(0);
+          setLoading(false);
+        } catch (teamError) {
+          console.error("Error fetching team data:", teamError);
+          // Ultimate fallback to default data if even team fetch fails
+          setTeamMembers(defaultTeamMembers);
+          setActiveTeamMembersCount(
+            defaultTeamMembers.filter((member) => member.status === "active")
+              .length,
+          );
+          setUpcomingDeadlines(0);
+          setLoading(false);
+        }
       }
     };
 
@@ -606,7 +515,7 @@ const DashboardGrid = ({
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold text-gray-900">
-              {teamMembers.length}
+              {activeTeamMembersCount}
             </div>
             <p className="text-sm text-gray-500 mt-1">Active contributors</p>
 

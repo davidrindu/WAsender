@@ -31,7 +31,12 @@ import {
   getYear,
 } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
-import { fetchScheduledMessages, ScheduledMessage } from "@/lib/api";
+import {
+  fetchScheduledMessages,
+  fetchTeamMembers,
+  ScheduledMessage,
+  TeamMember,
+} from "@/lib/api";
 
 const defaultMessages: ScheduledMessage[] = [
   {
@@ -144,25 +149,66 @@ const CalendarPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Fetch scheduled messages from Supabase
+  // Fetch scheduled messages and team members from Supabase
   useEffect(() => {
-    const fetchMessages = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
 
         // Fetch messages from the API
         const messagesData = await fetchScheduledMessages();
 
+        // Fetch team members to ensure consistency with team page
+        const teamMembers = await fetchTeamMembers();
+
         if (messagesData && messagesData.length > 0) {
-          setMessages(messagesData);
+          // Enhance messages with team member data
+          const enhancedMessages = messagesData.map((message) => {
+            // Find the team member for this message
+            const teamMember = teamMembers.find(
+              (member) => member.id === message.teamMemberId,
+            );
+
+            if (teamMember) {
+              return {
+                ...message,
+                teamMemberName: teamMember.name,
+                teamMemberAvatar: teamMember.avatar,
+              };
+            }
+
+            return message;
+          });
+
+          setMessages(enhancedMessages);
         } else {
           // If no messages found in database, use default messages for development
           console.log("No messages found in database, using default data");
+
+          // Enhance default messages with team member data
+          const enhancedDefaultMessages = defaultMessages.map((message) => {
+            // Find the team member for this message
+            const teamMember = teamMembers.find(
+              (member) => member.id === message.teamMemberId,
+            );
+
+            if (teamMember) {
+              return {
+                ...message,
+                teamMemberName: teamMember.name,
+                teamMemberAvatar: teamMember.avatar,
+              };
+            }
+
+            return message;
+          });
+
+          setMessages(enhancedDefaultMessages);
         }
 
         setLoading(false);
       } catch (error) {
-        console.error("Error in fetchMessages:", error);
+        console.error("Error in fetchData:", error);
         setLoading(false);
         toast({
           title: "Error",
@@ -172,7 +218,7 @@ const CalendarPage = () => {
       }
     };
 
-    fetchMessages();
+    fetchData();
   }, [toast]);
 
   // Function to get messages for the selected date
@@ -241,6 +287,13 @@ const CalendarPage = () => {
   const navigateToTeamMember = (teamMemberId: string | undefined) => {
     if (teamMemberId) {
       navigate(`/team?highlight=${teamMemberId}`);
+    }
+  };
+
+  // Function to navigate to project page
+  const navigateToProject = (projectId: string | undefined) => {
+    if (projectId) {
+      navigate(`/projects?highlight=${projectId}`);
     }
   };
 

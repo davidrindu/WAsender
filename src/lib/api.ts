@@ -24,6 +24,19 @@ export interface TeamMember {
   projects: number;
 }
 
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  status: "active" | "completed" | "draft";
+  message_count: number;
+  scheduled_count: number;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  team?: TeamMember[];
+}
+
 // Fetch team members from Supabase
 export const fetchTeamMembers = async (): Promise<TeamMember[]> => {
   try {
@@ -103,6 +116,70 @@ export const countProjectsPerTeamMember = async (): Promise<
   } catch (error) {
     console.error("Error counting projects:", error);
     return {};
+  }
+};
+
+// Fetch projects from Supabase
+export const fetchProjects = async (): Promise<Project[]> => {
+  try {
+    const { data: projectsData, error } = await supabase
+      .from("projects")
+      .select("*")
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+
+    return projectsData as Project[];
+  } catch (error) {
+    console.error("Error fetching projects:", error);
+    return [];
+  }
+};
+
+// Fetch projects with team members
+export const fetchProjectsWithTeam = async (): Promise<Project[]> => {
+  try {
+    // First fetch all projects
+    const projects = await fetchProjects();
+
+    // Then fetch all team members
+    const teamMembers = await fetchTeamMembers();
+
+    // For each project, assign team members based on user_id
+    // In a real app, you would have a project_team_members junction table
+    // For now, we'll simulate this by assigning team members to projects
+    return projects.map((project) => {
+      // Assign 1-3 random team members to each project
+      const teamSize = Math.floor(Math.random() * 3) + 1;
+      const projectTeam = [];
+
+      // Ensure the project owner (user_id) is always included
+      const ownerMember = teamMembers.find(
+        (member) => member.id === project.user_id,
+      );
+      if (ownerMember) {
+        projectTeam.push(ownerMember);
+      }
+
+      // Add additional random team members
+      while (projectTeam.length < teamSize) {
+        const randomIndex = Math.floor(Math.random() * teamMembers.length);
+        const randomMember = teamMembers[randomIndex];
+
+        // Avoid duplicates
+        if (!projectTeam.some((member) => member.id === randomMember.id)) {
+          projectTeam.push(randomMember);
+        }
+      }
+
+      return {
+        ...project,
+        team: projectTeam,
+      };
+    });
+  } catch (error) {
+    console.error("Error fetching projects with team:", error);
+    return [];
   }
 };
 
