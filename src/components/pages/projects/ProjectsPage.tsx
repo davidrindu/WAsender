@@ -7,18 +7,12 @@ import ProjectCard from "../../projects/ProjectCard";
 import { supabase } from "../../../../supabase/supabase";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-
-interface Project {
-  id: string;
-  title: string;
-  description: string;
-  status: "active" | "completed" | "draft";
-  message_count: number;
-  scheduled_count: number;
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-}
+import {
+  fetchProjects,
+  fetchProjectsWithTeam,
+  fetchTeamMembers,
+  Project,
+} from "@/lib/api";
 
 const ProjectsPage = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -27,7 +21,7 @@ const ProjectsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const fetchProjects = async () => {
+  const loadProjects = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -40,15 +34,16 @@ const ProjectsPage = () => {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+      // Use the API function to fetch projects with team members
+      const projectsWithTeam = await fetchProjectsWithTeam();
 
-      if (error) throw error;
+      // Filter projects for the current user if needed
+      // In a real app, you might want to adjust this based on permissions
+      const userProjects = projectsWithTeam.filter(
+        (project) => project.user_id === user.id,
+      );
 
-      setProjects(data as Project[]);
+      setProjects(userProjects);
     } catch (error: any) {
       console.error("Error fetching projects:", error);
       setError(error.message || "Failed to load projects");
@@ -63,7 +58,7 @@ const ProjectsPage = () => {
   };
 
   useEffect(() => {
-    fetchProjects();
+    loadProjects();
 
     // Set up real-time subscription
     const subscription = supabase
@@ -71,7 +66,7 @@ const ProjectsPage = () => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "projects" },
-        () => fetchProjects(),
+        () => loadProjects(),
       )
       .subscribe();
 
@@ -126,7 +121,7 @@ const ProjectsPage = () => {
               >
                 Completed
               </Button>
-              <NewProjectDialog onProjectCreated={fetchProjects} />
+              <NewProjectDialog onProjectCreated={loadProjects} />
             </div>
           </div>
 
@@ -138,7 +133,7 @@ const ProjectsPage = () => {
             <div className="flex justify-center items-center h-64">
               <div className="text-center">
                 <p className="text-red-500 mb-4">{error}</p>
-                <Button onClick={fetchProjects}>Try Again</Button>
+                <Button onClick={loadProjects}>Try Again</Button>
               </div>
             </div>
           ) : filteredProjects.length === 0 ? (
@@ -160,7 +155,7 @@ const ProjectsPage = () => {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onProjectUpdated={fetchProjects}
+                  onProjectUpdated={loadProjects}
                 />
               ))}
             </div>

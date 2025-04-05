@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,22 +26,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MessageSquare, Calendar, MoreHorizontal } from "lucide-react";
+import { MessageSquare, Calendar, MoreHorizontal, Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "../../../supabase/supabase";
 import { useToast } from "@/components/ui/use-toast";
-
-interface Project {
-  id: string;
-  title: string;
-  description: string;
-  status: "active" | "completed" | "draft";
-  message_count: number;
-  scheduled_count: number;
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-}
+import { Project } from "@/lib/api";
 
 interface ProjectCardProps {
   project: Project;
@@ -187,6 +177,32 @@ const ProjectCard = ({ project, onProjectUpdated }: ProjectCardProps) => {
               </span>
             </div>
           </div>
+
+          {/* Team members section */}
+          {project.team && project.team.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1 text-gray-500 text-xs">
+                  <Users className="h-3 w-3" />
+                  <span>Team Members</span>
+                </div>
+                <div className="flex -space-x-2">
+                  {project.team.map((member, i) => (
+                    <Avatar
+                      key={i}
+                      className="h-6 w-6 border-2 border-white"
+                      title={member.name}
+                    >
+                      <AvatarImage src={member.avatar} alt={member.name} />
+                      <AvatarFallback className="bg-blue-100 text-blue-800 text-xs">
+                        {member.name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
         <CardFooter className="pt-0">
           <Button

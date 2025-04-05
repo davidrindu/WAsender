@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,8 +27,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TeamMember } from "../pages/team";
+import { TeamMember } from "@/lib/api";
 import { supabase } from "../../../supabase/supabase";
+import { useToast } from "@/components/ui/use-toast";
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -53,6 +54,9 @@ const EditTeamMemberDialog = ({
   onSave,
   onDelete,
 }: EditTeamMemberDialogProps) => {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -79,9 +83,40 @@ const EditTeamMemberDialog = ({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!member) return;
 
+    setIsSubmitting(true);
+
     try {
-      // In a real app, you would update the member in the database
-      // For now, we'll just update the local state
+      // Update the member in the database
+      const { error } = await supabase
+        .from("users")
+        .update({
+          name: values.name,
+          email: values.email,
+          // Add additional fields to store in the database
+          avatar_url: member.avatar, // Preserve avatar
+          updated_at: new Date().toISOString(),
+          // We'll store role and status as metadata
+          metadata: {
+            role: values.role,
+            status: values.status,
+            phone: values.phone,
+          },
+        })
+        .eq("id", member.id);
+
+      if (error) throw error;
+
+      // Also update any related records in the projects table if needed
+      const { error: projectsError } = await supabase
+        .from("projects")
+        .update({ user_name: values.name })
+        .eq("user_id", member.id);
+
+      if (projectsError) {
+        console.warn("Error updating related projects:", projectsError);
+        // Continue execution - this is not a critical error
+      }
+
       const updatedMember: TeamMember = {
         ...member,
         name: values.name,
@@ -91,17 +126,127 @@ const EditTeamMemberDialog = ({
         status: values.status,
       };
 
+      toast({
+        title: "Success",
+        description: "Team member updated successfully",
+      });
+
       onSave(updatedMember);
       onOpenChange(false);
     } catch (error) {
       console.error("Error updating team member:", error);
+      toast({
+        title: "Error",
+        description:
+          "Failed to update team member: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!member) return;
-    onDelete(member.id);
-    onOpenChange(false);
+
+    // Confirm deletion
+    if (
+      !confirm(
+        "Are you sure you want to delete this team member? This action cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      // First check if this member is assigned to any projects
+      const { data: projectAssignments, error: checkError } = await supabase
+        .from("projects")
+        .select("id, title")
+        .eq("user_id", member.id);
+
+      if (checkError) throw checkError;
+
+      // If member has project assignments, show warning
+      if (projectAssignments && projectAssignments.length > 0) {
+        const projectNames = projectAssignments.map((p) => p.title).join(", ");
+        if (
+          !confirm(
+            `This team member is assigned to ${projectAssignments.length} project(s): ${projectNames}. Deleting this member will remove them from these projects. Continue?`,
+          )
+        ) {
+          setIsDeleting(false);
+          return;
+        }
+
+        // Update projects to remove this user's assignment
+        const { error: projectUpdateError } = await supabase
+          .from("projects")
+          .update({ user_id: null, user_name: null })
+          .eq("user_id", member.id);
+
+        if (projectUpdateError) {
+          console.warn(
+            "Error updating projects during member deletion:",
+            projectUpdateError,
+          );
+          // Continue with deletion anyway
+        }
+      }
+
+      // Check for scheduled messages assigned to this user
+      const { data: scheduledMessages, error: messagesError } = await supabase
+        .from("scheduled_messages")
+        .select("id")
+        .eq("user_id", member.id);
+
+      if (messagesError) {
+        console.warn("Error checking scheduled messages:", messagesError);
+      } else if (scheduledMessages && scheduledMessages.length > 0) {
+        // Update scheduled messages to remove this user's assignment
+        const { error: messageUpdateError } = await supabase
+          .from("scheduled_messages")
+          .update({ user_id: null })
+          .eq("user_id", member.id);
+
+        if (messageUpdateError) {
+          console.warn(
+            "Error updating scheduled messages:",
+            messageUpdateError,
+          );
+        }
+      }
+
+      // Delete the member from the database
+      const { error } = await supabase
+        .from("users")
+        .delete()
+        .eq("id", member.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Team member deleted successfully",
+      });
+
+      onDelete(member.id);
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error deleting team member:", error);
+      toast({
+        title: "Error",
+        description:
+          "Failed to delete team member: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -217,18 +362,22 @@ const EditTeamMemberDialog = ({
                 type="button"
                 variant="destructive"
                 onClick={handleDelete}
+                disabled={isDeleting || isSubmitting}
               >
-                Delete Member
+                {isDeleting ? "Deleting..." : "Delete Member"}
               </Button>
               <div className="flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  disabled={isDeleting || isSubmitting}
                 >
                   Cancel
                 </Button>
-                <Button type="submit">Save Changes</Button>
+                <Button type="submit" disabled={isDeleting || isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Changes"}
+                </Button>
               </div>
             </DialogFooter>
           </form>
