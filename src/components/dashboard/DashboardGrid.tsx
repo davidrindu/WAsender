@@ -315,11 +315,11 @@ const DashboardGrid = ({
       try {
         setLoading(true);
 
+        // Fetch team members first to ensure we have the latest data
+        const apiTeamMembers = await fetchTeamMembers();
+
         // Fetch projects with team members using our new API function
         const projectsWithTeam = await fetchProjectsWithTeam();
-
-        // Fetch team members from the same source as the team page
-        const apiTeamMembers = await fetchTeamMembers();
 
         // Calculate upcoming deadlines (projects due within 7 days)
         const today = new Date();
@@ -336,13 +336,30 @@ const DashboardGrid = ({
               ? Math.floor((project.message_count / totalMessages) * 100)
               : Math.floor(Math.random() * 100); // Fallback for projects with no messages
 
-          // Format team members for display
-          const teamMembers =
-            project.team?.map((member) => ({
-              id: member.id,
-              name: member.name,
-              avatar: member.avatar,
-            })) || [];
+          // Format team members for display - ensure we're using the latest team data
+          const teamMembers = [];
+          if (project.team && project.team.length > 0) {
+            project.team.forEach((member) => {
+              // Try to find the member in the latest apiTeamMembers data
+              const latestMemberData = apiTeamMembers.find(
+                (m) => m.id === member.id,
+              );
+              if (latestMemberData) {
+                teamMembers.push({
+                  id: latestMemberData.id,
+                  name: latestMemberData.name,
+                  avatar: latestMemberData.avatar,
+                });
+              } else {
+                // Fallback to the original data if not found
+                teamMembers.push({
+                  id: member.id,
+                  name: member.name,
+                  avatar: member.avatar,
+                });
+              }
+            });
+          }
 
           return {
             id: project.id,

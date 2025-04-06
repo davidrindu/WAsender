@@ -11,6 +11,10 @@ export interface ScheduledMessage {
   teamMemberId?: string;
   teamMemberName?: string;
   teamMemberAvatar?: string;
+  projectInfo?: {
+    id: string;
+    title: string;
+  };
 }
 
 export interface TeamMember {
@@ -49,12 +53,12 @@ export const fetchTeamMembers = async (): Promise<TeamMember[]> => {
       id: user.id,
       name: user.name || user.full_name || "Unknown",
       email: user.email || "",
-      phone: "+1 (555) 123-4567", // Default phone as it's not in the users table
-      role: "User", // Default role
+      phone: user.phone || "+1 (555) 123-4567", // Use stored phone if available
+      role: user.role || "User", // Use stored role if available
       avatar:
         user.avatar_url ||
         `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-      status: "active", // Default status
+      status: user.status || "active", // Use stored status if available
       projects: 0, // Will be updated with project count
     }));
   } catch (error) {
@@ -145,38 +149,71 @@ export const fetchProjectsWithTeam = async (): Promise<Project[]> => {
     // Then fetch all team members
     const teamMembers = await fetchTeamMembers();
 
-    // For each project, assign team members based on user_id
-    // In a real app, you would have a project_team_members junction table
-    // For now, we'll simulate this by assigning team members to projects
-    return projects.map((project) => {
-      // Assign 1-3 random team members to each project
-      const teamSize = Math.floor(Math.random() * 3) + 1;
-      const projectTeam = [];
+    // Check if we have project_team_members table
+    const { data: projectTeamData, error: projectTeamError } = await supabase
+      .from("project_team_members")
+      .select("*");
 
-      // Ensure the project owner (user_id) is always included
-      const ownerMember = teamMembers.find(
-        (member) => member.id === project.user_id,
-      );
-      if (ownerMember) {
-        projectTeam.push(ownerMember);
-      }
+    // If we have a project_team_members table and data, use it
+    if (!projectTeamError && projectTeamData && projectTeamData.length > 0) {
+      return projects.map((project) => {
+        // Find all team members for this project
+        const projectTeamIds = projectTeamData
+          .filter((ptm) => ptm.project_id === project.id)
+          .map((ptm) => ptm.user_id);
 
-      // Add additional random team members
-      while (projectTeam.length < teamSize) {
-        const randomIndex = Math.floor(Math.random() * teamMembers.length);
-        const randomMember = teamMembers[randomIndex];
+        // Get the team members by their IDs
+        const projectTeam = teamMembers.filter((member) =>
+          projectTeamIds.includes(member.id),
+        );
 
-        // Avoid duplicates
-        if (!projectTeam.some((member) => member.id === randomMember.id)) {
-          projectTeam.push(randomMember);
+        // Ensure the project owner is included if not already
+        const ownerMember = teamMembers.find(
+          (member) =>
+            member.id === project.user_id &&
+            !projectTeamIds.includes(member.id),
+        );
+        if (ownerMember) {
+          projectTeam.push(ownerMember);
         }
-      }
 
-      return {
-        ...project,
-        team: projectTeam,
-      };
-    });
+        return {
+          ...project,
+          team: projectTeam.length > 0 ? projectTeam : [],
+        };
+      });
+    } else {
+      // Fallback to the previous implementation if no junction table exists
+      return projects.map((project) => {
+        // Assign 1-3 random team members to each project
+        const teamSize = Math.floor(Math.random() * 3) + 1;
+        const projectTeam = [];
+
+        // Ensure the project owner (user_id) is always included
+        const ownerMember = teamMembers.find(
+          (member) => member.id === project.user_id,
+        );
+        if (ownerMember) {
+          projectTeam.push(ownerMember);
+        }
+
+        // Add additional random team members
+        while (projectTeam.length < teamSize) {
+          const randomIndex = Math.floor(Math.random() * teamMembers.length);
+          const randomMember = teamMembers[randomIndex];
+
+          // Avoid duplicates
+          if (!projectTeam.some((member) => member.id === randomMember.id)) {
+            projectTeam.push(randomMember);
+          }
+        }
+
+        return {
+          ...project,
+          team: projectTeam,
+        };
+      });
+    }
   } catch (error) {
     console.error("Error fetching projects with team:", error);
     return [];

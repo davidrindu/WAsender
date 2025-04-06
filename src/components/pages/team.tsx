@@ -45,6 +45,22 @@ const TeamPage = () => {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
+  // Force reload when component is mounted or becomes visible
+  useEffect(() => {
+    // This will ensure data is fresh when navigating back to this page
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadTeamData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   // Check for highlighted member from URL params
   useEffect(() => {
     const highlightId = searchParams.get("highlight");
@@ -70,50 +86,71 @@ const TeamPage = () => {
     }
   }, [searchParams, teamMembers]);
 
+  // Function to load team data that can be called multiple times
+  const loadTeamData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch team members from Supabase
+      const members = await fetchTeamMembers();
+
+      if (members.length === 0) {
+        // If no team members found, use default data for development
+        console.log("No team members found in database, using default data");
+        setTeamMembers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch project counts for each team member
+      const projectCounts = await countProjectsPerTeamMember();
+
+      // Update team members with project counts
+      const updatedMembers = members.map((member) => ({
+        ...member,
+        projects: projectCounts[member.id] || 0,
+      }));
+
+      setTeamMembers(updatedMembers);
+
+      // Seed initial messages if needed
+      await seedInitialMessages(updatedMembers);
+
+      setLoading(false);
+    } catch (error) {
+      console.error("Error loading team data:", error);
+      setLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to load team data",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Fetch team members and project counts
   useEffect(() => {
-    const loadTeamData = async () => {
-      try {
-        setLoading(true);
-
-        // Fetch team members from Supabase
-        const members = await fetchTeamMembers();
-
-        if (members.length === 0) {
-          // If no team members found, use default data for development
-          console.log("No team members found in database, using default data");
-          setTeamMembers([]);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch project counts for each team member
-        const projectCounts = await countProjectsPerTeamMember();
-
-        // Update team members with project counts
-        const updatedMembers = members.map((member) => ({
-          ...member,
-          projects: projectCounts[member.id] || 0,
-        }));
-
-        setTeamMembers(updatedMembers);
-
-        // Seed initial messages if needed
-        await seedInitialMessages(updatedMembers);
-
-        setLoading(false);
-      } catch (error) {
-        console.error("Error loading team data:", error);
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: "Failed to load team data",
-          variant: "destructive",
-        });
-      }
-    };
+    // Use the loadTeamData function defined above
 
     loadTeamData();
+
+    // Set up real-time subscription to users table
+    const usersSubscription = supabase
+      .channel("users-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        () => {
+          // Reload team data when users table changes
+          loadTeamData();
+        },
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      usersSubscription.unsubscribe();
+    };
   }, []);
 
   // Filter team members based on search query and status filter
@@ -130,28 +167,63 @@ const TeamPage = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveMember = (updatedMember: TeamMember) => {
-    // Update the team member in the local state
-    const updatedMembers = teamMembers.map((member) =>
-      member.id === updatedMember.id ? updatedMember : member,
-    );
-    setTeamMembers(updatedMembers);
+  const handleSaveMember = async (updatedMember: TeamMember) => {
+    try {
+      // Update the team member in the database
+      const { error } = await supabase
+        .from("users")
+        .update({
+          name: updatedMember.name,
+          email: updatedMember.email,
+          avatar_url: updatedMember.avatar,
+          role: updatedMember.role,
+          status: updatedMember.status,
+          phone: updatedMember.phone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", updatedMember.id);
 
-    toast({
-      title: "Success",
-      description: "Team member updated successfully",
-    });
+      if (error) throw error;
+
+      // Reload team data to ensure we have the latest data from the database
+      await loadTeamData();
+
+      toast({
+        title: "Success",
+        description: "Team member updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating team member:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update team member in database",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteMember = (id: string) => {
-    // Remove the team member from the local state
-    const updatedMembers = teamMembers.filter((member) => member.id !== id);
-    setTeamMembers(updatedMembers);
+  const handleDeleteMember = async (id: string) => {
+    try {
+      // Delete the team member from the database
+      const { error } = await supabase.from("users").delete().eq("id", id);
 
-    toast({
-      title: "Success",
-      description: "Team member deleted successfully",
-    });
+      if (error) throw error;
+
+      // Reload team data to ensure we have the latest data from the database
+      await loadTeamData();
+
+      toast({
+        title: "Success",
+        description: "Team member deleted successfully",
+      });
+    } catch (error) {
+      console.error("Error deleting team member:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete team member from database",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAddMember = () => {
@@ -179,12 +251,15 @@ const TeamPage = () => {
         email: newMember.email,
         avatar_url: newMember.avatar,
         token_identifier: crypto.randomUUID(), // Required field
+        role: newMember.role,
+        status: newMember.status,
+        phone: newMember.phone,
       });
 
       if (error) throw error;
 
-      // Add the new team member to the local state
-      setTeamMembers([...teamMembers, newMember]);
+      // Reload team data to ensure we have the latest data from the database
+      await loadTeamData();
 
       toast({
         title: "Success",

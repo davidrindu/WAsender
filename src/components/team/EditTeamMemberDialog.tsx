@@ -81,30 +81,38 @@ const EditTeamMemberDialog = ({
   }, [member, form]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!member) return;
+    if (!member) {
+      toast({
+        title: "Error",
+        description: "No team member data found to update",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
+      // We'll store these values only in the local state since the metadata column doesn't exist
+
       // Update the member in the database
       const { error } = await supabase
         .from("users")
         .update({
           name: values.name,
           email: values.email,
-          // Add additional fields to store in the database
           avatar_url: member.avatar, // Preserve avatar
           updated_at: new Date().toISOString(),
-          // We'll store role and status as metadata
-          metadata: {
-            role: values.role,
-            status: values.status,
-            phone: values.phone,
-          },
+          role: values.role,
+          status: values.status,
+          phone: values.phone,
         })
         .eq("id", member.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw new Error(error.message || "Failed to update user record");
+      }
 
       // Also update any related records in the projects table if needed
       const { error: projectsError } = await supabase
@@ -139,7 +147,9 @@ const EditTeamMemberDialog = ({
         title: "Error",
         description:
           "Failed to update team member: " +
-          (error instanceof Error ? error.message : "Unknown error"),
+          (error instanceof Error
+            ? error.message
+            : "Database connection issue. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -148,7 +158,14 @@ const EditTeamMemberDialog = ({
   };
 
   const handleDelete = async () => {
-    if (!member) return;
+    if (!member) {
+      toast({
+        title: "Error",
+        description: "No team member data found to delete",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Confirm deletion
     if (
@@ -168,7 +185,11 @@ const EditTeamMemberDialog = ({
         .select("id, title")
         .eq("user_id", member.id);
 
-      if (checkError) throw checkError;
+      if (checkError) {
+        throw new Error(
+          checkError.message || "Failed to check project assignments",
+        );
+      }
 
       // If member has project assignments, show warning
       if (projectAssignments && projectAssignments.length > 0) {
@@ -201,7 +222,7 @@ const EditTeamMemberDialog = ({
       const { data: scheduledMessages, error: messagesError } = await supabase
         .from("scheduled_messages")
         .select("id")
-        .eq("user_id", member.id);
+        .eq("team_member_id", member.id); // Changed from user_id to team_member_id to match the API
 
       if (messagesError) {
         console.warn("Error checking scheduled messages:", messagesError);
@@ -209,8 +230,8 @@ const EditTeamMemberDialog = ({
         // Update scheduled messages to remove this user's assignment
         const { error: messageUpdateError } = await supabase
           .from("scheduled_messages")
-          .update({ user_id: null })
-          .eq("user_id", member.id);
+          .update({ team_member_id: null }) // Changed from user_id to team_member_id
+          .eq("team_member_id", member.id); // Changed from user_id to team_member_id
 
         if (messageUpdateError) {
           console.warn(
@@ -226,7 +247,9 @@ const EditTeamMemberDialog = ({
         .delete()
         .eq("id", member.id);
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(error.message || "Failed to delete user record");
+      }
 
       toast({
         title: "Success",
@@ -241,7 +264,9 @@ const EditTeamMemberDialog = ({
         title: "Error",
         description:
           "Failed to delete team member: " +
-          (error instanceof Error ? error.message : "Unknown error"),
+          (error instanceof Error
+            ? error.message
+            : "Database connection issue. Please try again."),
         variant: "destructive",
       });
     } finally {

@@ -155,25 +155,46 @@ const CalendarPage = () => {
       try {
         setLoading(true);
 
+        // Fetch team members first to ensure we have the latest data
+        const teamMembers = await fetchTeamMembers();
+
         // Fetch messages from the API
         const messagesData = await fetchScheduledMessages();
 
-        // Fetch team members to ensure consistency with team page
-        const teamMembers = await fetchTeamMembers();
+        // Fetch projects to link messages with project data
+        const projects = await fetchProjectsWithTeam();
 
         if (messagesData && messagesData.length > 0) {
-          // Enhance messages with team member data
+          // Enhance messages with team member data and project data
           const enhancedMessages = messagesData.map((message) => {
-            // Find the team member for this message
+            // Find the team member for this message using the latest team data
             const teamMember = teamMembers.find(
               (member) => member.id === message.teamMemberId,
             );
+
+            // Try to find a project associated with this team member
+            let projectInfo = null;
+            if (teamMember) {
+              const memberProject = projects.find(
+                (project) =>
+                  project.team &&
+                  project.team.some((member) => member.id === teamMember.id),
+              );
+
+              if (memberProject) {
+                projectInfo = {
+                  id: memberProject.id,
+                  title: memberProject.title,
+                };
+              }
+            }
 
             if (teamMember) {
               return {
                 ...message,
                 teamMemberName: teamMember.name,
                 teamMemberAvatar: teamMember.avatar,
+                projectInfo: projectInfo,
               };
             }
 
@@ -185,18 +206,36 @@ const CalendarPage = () => {
           // If no messages found in database, use default messages for development
           console.log("No messages found in database, using default data");
 
-          // Enhance default messages with team member data
+          // Enhance default messages with team member data and project info
           const enhancedDefaultMessages = defaultMessages.map((message) => {
-            // Find the team member for this message
+            // Find the team member for this message using the latest team data
             const teamMember = teamMembers.find(
               (member) => member.id === message.teamMemberId,
             );
+
+            // Try to find a project associated with this team member
+            let projectInfo = null;
+            if (teamMember) {
+              const memberProject = projects.find(
+                (project) =>
+                  project.team &&
+                  project.team.some((member) => member.id === teamMember.id),
+              );
+
+              if (memberProject) {
+                projectInfo = {
+                  id: memberProject.id,
+                  title: memberProject.title,
+                };
+              }
+            }
 
             if (teamMember) {
               return {
                 ...message,
                 teamMemberName: teamMember.name,
                 teamMemberAvatar: teamMember.avatar,
+                projectInfo: projectInfo,
               };
             }
 
@@ -528,6 +567,18 @@ const CalendarPage = () => {
                                 )}
                                 {message.teamMemberId && " (View Team Member)"}
                               </div>
+                              {message.projectInfo && (
+                                <div
+                                  className="flex items-center text-sm text-gray-500 cursor-pointer hover:text-blue-600 hover:underline ml-4"
+                                  onClick={() =>
+                                    navigateToProject(message.projectInfo.id)
+                                  }
+                                >
+                                  <span>
+                                    Project: {message.projectInfo.title}
+                                  </span>
+                                </div>
+                              )}
                               <div className="flex items-center text-sm text-gray-500">
                                 <Clock className="h-4 w-4 mr-1" />
                                 {format(message.scheduledDate, "h:mm a")}
